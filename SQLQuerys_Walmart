@@ -1,0 +1,155 @@
+﻿-- Advanced project walnart_analysis
+-- EDA
+select * from walmart
+
+EXEC sp_rename 'walmart_clean_data', 'walmart';
+
+select count(*) from walmart
+
+select payment_method,count(*) as many_pays
+from walmart
+group by payment_method
+
+select branch,count(*) as many_pays
+from walmart
+group by branch
+
+--Business problems
+--1. Analyze Payment Methods and Sales
+-- Question: What are the different payment methods, and how many transactions anditems were sold with each method?
+--● Purpose: This helps understand customer preferences for payment methods, aiding in
+--payment optimization strategies.
+
+select category,
+payment_method,
+count(*) as transactions
+from walmart
+group by category,payment_method
+
+--2. Identify the Highest-Rated Category in Each Branch
+--● Question: Which category received the highest average rating in each branch?
+--● Purpose: This allows Walmart to recognize and promote popular categories in specific
+--branches, enhancing customer satisfaction and branch-specific marketing
+
+select category,branch,
+avg(rating) as avg_rating
+from walmart
+group by category,branch
+order by avg_rating desc
+
+--3. Determine the Busiest Day for Each Branch
+--● Question: What is the busiest day of the week for each branch based on transactionvolume?
+--● Purpose: This insight helps in optimizing staffing and inventory management toaccommodate peak days.
+SELECT 
+    branch,
+    DATEPART(WEEK, CONVERT(DATE, [date], 105)) AS week_days, -- 105 = DD-MM-YYYY
+    SUM(total) AS total_sales
+FROM walmart
+GROUP BY 
+    branch,
+    DATEPART(WEEK, CONVERT(DATE, [date], 105));
+
+
+   --4. Calculate Total Quantity Sold by Payment Method
+--● Question: How many items were sold through each payment method?
+--● Purpose: This helps Walmart track sales volume by payment type, providing insightsinto customer purchasing habits.
+select payment_method,
+category,
+count(*) as sold
+from walmart
+group by payment_method,category
+
+--5 Analyze Category Ratings by City
+--● Question: What are the average, minimum, and maximum ratings for each category ineach city?
+--● Purpose: This data can guide city-level promotions, allowing Walmart to addressregional preferences and improve customer experiences.
+
+select category,city,
+avg(rating) as avg_rating,
+max(rating) as max_rating,
+min(rating) as min_rating
+from walmart
+group by category,city
+
+--6. Calculate Total Profit by Category
+--● Question: What is the total profit for each category, ranked from highest to lowest?
+--● Purpose: Identifying high-profit categories helps focus efforts on expanding theseproducts or managing pricing strategies effectively.
+select category,sum(profit_margin) as total_profit
+from walmart
+group by category
+order by total_profit desc
+
+--7. Determine the Most Common Payment Method per Branch
+--● Question: What is the most frequently used payment method in each branch?
+--● Purpose: This information aids in understanding branch-specific payment preferences,potentially allowing branches to streamline their payment processing o= systems.
+
+WITH ctc AS (
+    SELECT 
+        payment_method,
+        branch,
+        COUNT(*) AS total,
+        RANK() OVER (
+            PARTITION BY payment_method 
+            ORDER BY COUNT(*) DESC
+        ) AS rank_1
+    FROM walmart
+    GROUP BY payment_method, branch
+)
+SELECT *
+FROM ctc
+WHERE rank_1 = 1;
+
+--Analyze Sales Shifts Throughout the Day
+--● Question: How many transactions occur in each shift (Morning, Afternoon, Evening)across branches?
+--● Purpose: This insight helps in managing staff shifts and stock replenishment schedules,especially during high-sales periods.
+
+
+SELECT 
+    CASE 
+        WHEN DATEPART(HOUR, time) < 12 THEN 'Morning'
+        WHEN DATEPART(HOUR, time) BETWEEN 12 AND 18 THEN 'Afternoon'
+        ELSE 'Night'
+    END AS shift,
+    COUNT(*) AS trans
+FROM walmart
+GROUP BY 
+    CASE 
+        WHEN DATEPART(HOUR, time) < 12 THEN 'Morning'
+        WHEN DATEPART(HOUR, time) BETWEEN 12 AND 18 THEN 'Afternoon'
+        ELSE 'Night'
+    END;
+
+
+
+
+
+--9. Identify Branches with Highest Revenue Decline Year-Over-Year
+--● Question: Which branches experienced the largest decrease in revenue compared tothe previous year?
+--● Purpose: Detecting branches with declining revenue is crucial for understandingpossible local issues and creating strategies to boost sales or mitigate losses
+
+
+
+WITH Last_year AS (
+    SELECT 
+        Branch,
+        SUM(Total) AS Last_revenue_2019
+    FROM walmart
+    WHERE YEAR(TRY_CONVERT(DATE, [Date], 5)) = 2019
+    GROUP BY Branch
+),
+This_year AS (
+    SELECT 
+        Branch,
+        SUM(Total) AS This_revenue_2020
+    FROM walmart
+    WHERE YEAR(TRY_CONVERT(DATE, [Date], 5)) = 2020
+    GROUP BY Branch
+)
+SELECT 
+    l.Branch,
+    l.Last_revenue_2019,
+    t.This_revenue_2020,
+    (t.This_revenue_2020 - l.Last_revenue_2019) AS revenue_diff,
+    round(((CAST(t.This_revenue_2020 AS FLOAT) - l.Last_revenue_2019) / NULLIF(l.Last_revenue_2019,0)) * 100,2) AS growth_percent
+FROM Last_year l
+JOIN This_year t
+    ON l.Branch = t.Branch;
